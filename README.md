@@ -27,7 +27,34 @@ probabilities, vector length, and the most recent gate matrix.
 
 ### Run locally
 
-Requirements: Node.js 18 or newer.
+Requirements: Node.js 18 or newer. Node.js includes `npm`, although this
+project does not require any npm packages.
+
+### Install Node.js on Windows
+
+Recommended option: install the current Node.js LTS release from the official
+[Node.js download page](https://nodejs.org/en/download). Choose the Windows
+LTS installer and keep the default options so Node.js is added to your PATH.
+
+If Windows Package Manager (`winget`) is available, you can install the LTS
+release from PowerShell instead:
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+```
+
+Close and reopen PowerShell after installation, then verify that Node.js is
+available:
+
+```powershell
+node --version
+npm --version
+```
+
+If either command is not recognized, restart PowerShell or restart your
+computer so the updated PATH is loaded.
+
+### Start the web app
 
 ```powershell
 node serve_app.js
