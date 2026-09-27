@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interactive Bloch Sphere</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --panel: #121d31;
+      --panel-2: #182640;
+      --line: #2d4264;
+      --text: #e7eefb;
+      --muted: #9eb0cb;
+      --accent: #6ee7ff;
+      --orange: #ffad5c;
+      --green: #73e6a8;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 15% 0%, #172a4b 0, var(--bg) 45%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { width: min(1180px, 94vw); margin: 0 auto; padding: 28px 0 40px; }
+    h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 4vw, 3rem); letter-spacing: -0.04em; }
+    h2 { margin: 0 0 14px; font-size: 1.05rem; }
+    p { color: var(--muted); line-height: 1.55; }
+    .subtitle { max-width: 760px; margin: 0 0 22px; }
+    .layout { display: grid; grid-template-columns: minmax(360px, 1.3fr) minmax(300px, .8fr); gap: 18px; align-items: start; }
+    .card { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 18px; padding: 18px; box-shadow: 0 16px 50px #02061766; }
+    .visual { min-height: 620px; }
+    canvas { width: 100%; height: 540px; display: block; border-radius: 12px; background: linear-gradient(145deg, #0e1b30, #09101e); cursor: grab; }
+    canvas:active { cursor: grabbing; }
+    .hint { font-size: .82rem; margin: 10px 2px 0; }
+    .controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .initial-controls { display: grid; gap: 10px; }
+    .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .field { display: grid; gap: 5px; }
+    .field label { color: var(--muted); font-size: .78rem; }
+    select, input { width: 100%; border: 1px solid #416089; border-radius: 8px; padding: 10px; color: var(--text); background: #0c1729; font: inherit; }
+    select:focus-visible, input:focus-visible { outline: 3px solid #6ee7ff66; outline-offset: 2px; }
+    .custom-angles { display: none; }
+    .custom-angles.visible { display: grid; }
+    .set-initial { background: #173b45; border-color: #4ca9b7; }
+    .initial-label { color: var(--accent); font-size: .84rem; margin: 0; }
+    button { border: 1px solid #416089; border-radius: 10px; padding: 12px 8px; color: var(--text); background: var(--panel-2); cursor: pointer; font: inherit; font-weight: 700; transition: transform .15s, border-color .15s, background .15s; }
+    button:hover { transform: translateY(-1px); border-color: var(--accent); background: #21385d; }
+    button:focus-visible { outline: 3px solid #6ee7ff66; outline-offset: 2px; }
+    .reset { grid-column: 1 / -1; background: #2a2030; border-color: #996078; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0; }
+    .stat { background: #0c1729; border: 1px solid #253754; border-radius: 10px; padding: 11px; }
+    .stat label { display: block; color: var(--muted); font-size: .75rem; margin-bottom: 4px; }
+    .stat output { font-variant-numeric: tabular-nums; color: var(--accent); font-size: 1.05rem; }
+    pre { margin: 0; overflow-x: auto; white-space: pre-wrap; word-break: break-word; color: #d7e3f7; line-height: 1.55; font-size: .84rem; }
+    .section { margin-top: 18px; padding-top: 16px; border-top: 1px solid #243755; }
+    .history { min-height: 28px; color: var(--orange); font-weight: 700; letter-spacing: .04em; }
+    .matrix { color: var(--green); }
+    @media (max-width: 850px) { .layout { grid-template-columns: 1fr; } .visual { min-height: 0; } canvas { height: min(540px, 82vw); } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Interactive Bloch Sphere</h1>
+    <p class="subtitle">Apply single-qubit gates and watch the state move in real time. The app calculates the statevector and the Bloch vector directly from the gate matrices. Drag the sphere to change the viewing angle.</p>
+
+    <div class="layout">
+      <section class="card visual">
+        <canvas id="sphere" aria-label="Interactive three-dimensional Bloch sphere"></canvas>
+        <p class="hint">Green = initial vector · orange = current vector · faint line = recent path</p>
+      </section>
+
+      <section class="card">
+        <h2>Choose initial state</h2>
+        <div class="initial-controls">
+          <div class="field-row">
+            <div class="field">
+              <label for="basisSelect">Basis / axis</label>
+              <select id="basisSelect">
+                <option value="computational">Computational / Z: |0⟩ or |1⟩</option>
+                <option value="hadamard">Hadamard / X: |+⟩ or |-⟩</option>
+                <option value="y">Y basis: |+i⟩ or |-i⟩</option>
+                <option value="custom">Custom Bloch angles</option>
+              </select>
+            </div>
+            <div class="field" id="signField">
+              <label for="signSelect">State</label>
+              <select id="signSelect">
+                <option value="plus">+ state</option>
+                <option value="minus">− state</option>
+              </select>
+            </div>
+          </div>
+          <div class="field-row custom-angles" id="customAngles">
+            <div class="field"><label for="thetaInput">θ (radians)</label><input id="thetaInput" type="number" step="any" value="2.29336"></div>
+            <div class="field"><label for="phiInput">φ (radians)</label><input id="phiInput" type="number" step="any" value="0.97389"></div>
+          </div>
+          <button class="set-initial" id="setInitial">Set initial state</button>
+          <p class="initial-label" id="initialStateLabel"></p>
+        </div>
+
+        <div class="section">
+        <h2>Apply a gate</h2>
+        <div class="controls" id="gateControls">
+          <button data-gate="X">X</button><button data-gate="Y">Y</button><button data-gate="Z">Z</button>
+          <button data-gate="H">H</button><button data-gate="S">S</button><button data-gate="T">T</button>
+          <button class="reset" id="reset">Reset to initial state</button>
+        </div>
+        </div>
+
+        <div class="stats">
+          <div class="stat"><label>x = &lt;X&gt;</label><output id="xValue">0</output></div>
+          <div class="stat"><label>y = &lt;Y&gt;</label><output id="yValue">0</output></div>
+          <div class="stat"><label>z = &lt;Z&gt;</label><output id="zValue">0</output></div>
+          <div class="stat"><label>P(0)</label><output id="p0Value">0</output></div>
+          <div class="stat"><label>P(1)</label><output id="p1Value">0</output></div>
+          <div class="stat"><label>vector length</label><output id="lengthValue">0</output></div>
+        </div>
+
+        <div class="section">
+          <h2>Gate history</h2>
+          <div class="history" id="history">Initial state</div>
+        </div>
+
+        <div class="section">
+          <h2>Current statevector</h2>
+          <pre id="stateValue"></pre>
+        </div>
+
+        <div class="section">
+          <h2>Last gate matrix</h2>
+          <pre class="matrix" id="matrixValue">Identity</pre>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('sphere');
+    const ctx = canvas.getContext('2d');
+    const pi = Math.PI;
+
+    const c = (re, im = 0) => ({ re, im });
+    const add = (a, b) => c(a.re + b.re, a.im + b.im);
+    const multiply = (a, b) => c(a.re * b.re - a.im * b.im, a.re * b.im + a.im * b.re);
+    const conjugate = a => c(a.re, -a.im);
+    const scale = (a, factor) => c(a.re * factor, a.im * factor);
+    const magnitudeSquared = a => a.re * a.re + a.im * a.im;
+    const matrix = (a, b, d, e) => [[a, b], [d, e]];
+
+    const gates = {
+      X: matrix(c(0), c(1), c(1), c(0)),
+      Y: matrix(c(0), c(0, -1), c(0, 1), c(0)),
+      Z: matrix(c(1), c(0), c(0), c(-1)),
+      H: matrix(c(1 / Math.sqrt(2)), c(1 / Math.sqrt(2)), c(1 / Math.sqrt(2)), c(-1 / Math.sqrt(2))),
+      S: matrix(c(1), c(0), c(0), c(0, 1)),
+      T: matrix(c(1), c(0), c(0), c(Math.cos(pi / 4), Math.sin(pi / 4)))
+    };
+
+    const initialTheta = 0.73 * pi;
+    const initialPhi = 0.31 * pi;
+    let initialState = stateFromAngles(initialTheta, initialPhi);
+    let state = cloneState(initialState);
+    let history = [];
+    let path = [bloch(state)];
+    let displayedVector = bloch(state);
+    let animationFrame = null;
+    let yaw = -0.55;
+    let pitch = 0.35;
+    let dragging = false;
+    let dragX = 0;
+    let dragY = 0;
+
+    function cloneState(value) { return value.map(item => c(item.re, item.im)); }
+
+    function normalize(value) {
+      const norm = Math.sqrt(value.reduce((sum, item) => sum + magnitudeSquared(item), 0));
+      return value.map(item => scale(item, 1 / norm));
+    }
+
+    function stateFromAngles(theta, phi) {
+      return normalize([c(Math.cos(theta / 2)), c(Math.sin(theta / 2) * Math.cos(phi), Math.sin(theta / 2) * Math.sin(phi))]);
+    }
+
+    function stateForPreset(basis, sign) {
+      const positive = sign === 'plus';
+      if (basis === 'computational') return positive ? [c(1), c(0)] : [c(0), c(1)];
+      if (basis === 'hadamard') {
+        const value = 1 / Math.sqrt(2);
+        return positive ? [c(value), c(value)] : [c(value), c(-value)];
+      }
+      const value = 1 / Math.sqrt(2);
+      return positive ? [c(value), c(0, value)] : [c(value), c(0, -value)];
+    }
+
+    function selectedInitialState() {
+      const basis = document.getElementById('basisSelect').value;
+      if (basis === 'custom') {
+        const theta = Number(document.getElementById('thetaInput').value);
+        const phi = Number(document.getElementById('phiInput').value);
+        if (!Number.isFinite(theta) || !Number.isFinite(phi)) throw new Error('Enter numeric θ and φ values.');
+        return { state: stateFromAngles(theta, phi), label: `Custom state: θ=${theta.toFixed(4)}, φ=${phi.toFixed(4)}` };
+      }
+      const sign = document.getElementById('signSelect').value;
+      const labels = {
+        computational: sign === 'plus' ? '|0⟩ (+z)' : '|1⟩ (−z)',
+        hadamard: sign === 'plus' ? '|+⟩ (+x)' : '|−⟩ (−x)',
+        y: sign === 'plus' ? '|+i⟩ (+y)' : '|−i⟩ (−y)'
+      };
+      return { state: stateForPreset(basis, sign), label: labels[basis] };
+    }
+
+    function updateInitialControls() {
+      const custom = document.getElementById('basisSelect').value === 'custom';
+      document.getElementById('customAngles').classList.toggle('visible', custom);
+      document.getElementById('signField').style.visibility = custom ? 'hidden' : 'visible';
+    }
+
+    function setInitialState() {
+      try {
+        const selected = selectedInitialState();
+        initialState = cloneState(selected.state);
+        state = cloneState(initialState);
+        history = [];
+        path = [bloch(state)];
+        document.getElementById('initialStateLabel').textContent = `Initial: ${selected.label}`;
+        updateReadout();
+        animateTo(path[0]);
+      } catch (error) {
+        window.alert(error.message);
+      }
+    }
+
+    function applyGate(gate, value) {
+      return normalize([
+        add(multiply(gate[0][0], value[0]), multiply(gate[0][1], value[1])),
+        add(multiply(gate[1][0], value[0]), multiply(gate[1][1], value[1]))
+      ]);
+    }
+
+    function bloch(value) {
+      const a = value[0];
+      const b = value[1];
+      const cross = multiply(conjugate(a), b);
+      return [2 * cross.re, 2 * cross.im, magnitudeSquared(a) - magnitudeSquared(b)];
+    }
+
+    function project(point, centerX, centerY, radius) {
+      const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
+      const rotatedX = point[0] * cosY + point[1] * sinY;
+      const depth = -point[0] * sinY + point[1] * cosY;
+      const cosP = Math.cos(pitch), sinP = Math.sin(pitch);
+      const vertical = point[2] * cosP - depth * sinP;
+      const drawnDepth = point[2] * sinP + depth * cosP;
+      return { x: centerX + rotatedX * radius, y: centerY - vertical * radius, depth: drawnDepth };
+    }
+
+    function drawLine(points, style, width = 1, alpha = 1) {
+      ctx.beginPath();
+      points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+      ctx.strokeStyle = style;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = width;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    function drawSphere() {
+      const ratio = window.devicePixelRatio || 1;
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
+        canvas.width = width * ratio;
+        canvas.height = height * ratio;
+      }
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = Math.min(width, height) * 0.34;
+
+      ctx.fillStyle = '#0d1d35';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, 2 * pi);
+      ctx.fill();
+
+      for (let latitude = -75; latitude <= 75; latitude += 15) {
+        const phi = latitude * pi / 180;
+        const points = [];
+        for (let i = 0; i <= 80; i++) {
+          const angle = i * 2 * pi / 80;
+          points.push(project([Math.cos(phi) * Math.cos(angle), Math.cos(phi) * Math.sin(angle), Math.sin(phi)], centerX, centerY, radius));
+        }
+        drawLine(points, '#37547d', 1, .55);
+      }
+      for (let longitude = 0; longitude < 180; longitude += 15) {
+        const angle = longitude * pi / 180;
+        const points = [];
+        for (let i = 0; i <= 80; i++) {
+          const phi = i * 2 * pi / 80;
+          points.push(project([Math.cos(phi) * Math.cos(angle), Math.cos(phi) * Math.sin(angle), Math.sin(phi)], centerX, centerY, radius));
+        }
+        drawLine(points, '#37547d', 1, .55);
+      }
+
+      const axes = [
+        [[-1, 0, 0], [1, 0, 0], 'x'], [[0, -1, 0], [0, 1, 0], 'y'], [[0, 0, -1], [0, 0, 1], 'z']
+      ];
+      axes.forEach(([from, to, label]) => {
+        const a = project(from, centerX, centerY, radius * 1.12);
+        const b = project(to, centerX, centerY, radius * 1.12);
+        drawLine([a, b], '#91a8c9', 1, .65);
+        ctx.fillStyle = '#c6d5eb';
+        ctx.font = '13px system-ui';
+        ctx.fillText('+' + label, b.x + 6, b.y - 4);
+      });
+
+      if (path.length > 1) drawLine(path.map(point => project(point, centerX, centerY, radius)), '#ffad5c', 2, .35);
+      drawVector([0, 0, 0], path[0], centerX, centerY, radius, '#73e6a8', 'initial');
+      drawVector([0, 0, 0], displayedVector, centerX, centerY, radius, '#ffad5c', 'current');
+    }
+
+    function drawVector(origin, vector, centerX, centerY, radius, color, label) {
+      const start = project(origin, centerX, centerY, radius);
+      const end = project(vector, centerX, centerY, radius);
+      drawLine([start, end], color, 4, 1);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, 6, 0, 2 * pi);
+      ctx.fill();
+      ctx.font = 'bold 13px system-ui';
+      ctx.fillText(label, end.x + 9, end.y - 8);
+    }
+
+    function animateTo(target) {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      const from = displayedVector.slice();
+      const start = performance.now();
+      const duration = 520;
+      function frame(now) {
+        const progress = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        displayedVector = from.map((value, index) => value + (target[index] - value) * eased);
+        drawSphere();
+        if (progress < 1) animationFrame = requestAnimationFrame(frame);
+      }
+      animationFrame = requestAnimationFrame(frame);
+    }
+
+    function formatComplex(value) {
+      const re = value.re.toFixed(5);
+      const im = Math.abs(value.im).toFixed(5);
+      if (Math.abs(value.im) < 0.000005) return re;
+      return `${re} ${value.im >= 0 ? '+' : '-'} ${im}i`;
+    }
+
+    function formatMatrix(gate) {
+      return gate.map(row => `[ ${row.map(formatComplex).join(' , ')} ]`).join('\n');
+    }
+
+    function updateReadout(gateName = null) {
+      const vector = bloch(state);
+      const p0 = magnitudeSquared(state[0]);
+      const p1 = magnitudeSquared(state[1]);
+      ['x', 'y', 'z'].forEach((axis, index) => document.getElementById(axis + 'Value').value = vector[index].toFixed(5));
+      document.getElementById('p0Value').value = p0.toFixed(5);
+      document.getElementById('p1Value').value = p1.toFixed(5);
+      document.getElementById('lengthValue').value = Math.hypot(...vector).toFixed(5);
+      document.getElementById('stateValue').textContent = `|ψ⟩ = [ ${formatComplex(state[0])}, ${formatComplex(state[1])} ]ᵀ`;
+      document.getElementById('history').textContent = history.length ? history.join('  →  ') : 'Initial state';
+      document.getElementById('matrixValue').textContent = gateName ? formatMatrix(gates[gateName]) : 'Identity';
+    }
+
+    document.querySelectorAll('[data-gate]').forEach(button => button.addEventListener('click', () => {
+      const name = button.dataset.gate;
+      state = applyGate(gates[name], state);
+      const target = bloch(state);
+      history.push(name);
+      path.push(target);
+      if (path.length > 10) path.shift();
+      updateReadout(name);
+      animateTo(target);
+    }));
+
+    document.getElementById('reset').addEventListener('click', () => {
+      state = cloneState(initialState);
+      history = [];
+      path = [bloch(state)];
+      updateReadout();
+      animateTo(path[0]);
+    });
+
+    document.getElementById('basisSelect').addEventListener('change', updateInitialControls);
+    document.getElementById('setInitial').addEventListener('click', setInitialState);
+
+    canvas.addEventListener('pointerdown', event => { dragging = true; dragX = event.clientX; dragY = event.clientY; canvas.setPointerCapture(event.pointerId); });
+    canvas.addEventListener('pointermove', event => {
+      if (!dragging) return;
+      yaw += (event.clientX - dragX) * 0.01;
+      pitch = Math.max(-1.35, Math.min(1.35, pitch + (event.clientY - dragY) * 0.01));
+      dragX = event.clientX;
+      dragY = event.clientY;
+      drawSphere();
+    });
+    canvas.addEventListener('pointerup', () => { dragging = false; });
+    canvas.addEventListener('pointercancel', () => { dragging = false; });
+    window.addEventListener('resize', drawSphere);
+
+    document.getElementById('basisSelect').value = 'custom';
+    updateInitialControls();
+    document.getElementById('initialStateLabel').textContent = `Initial: Custom state: θ=${initialTheta.toFixed(4)}, φ=${initialPhi.toFixed(4)}`;
+    updateReadout();
+    drawSphere();
+  </script>
+</body>
+</html>
